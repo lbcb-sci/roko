@@ -1,0 +1,8 @@
+biopython==1.75
+h5py==2.10.0
+numpy==1.17.4
+Pillow==6.2.1
+pysam==0.15.3
+pytorch-ignite==0.2.1
+six==1.13.0
+tqdm==4.40.0
