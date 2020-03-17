@@ -74,6 +74,9 @@ class StorageDataset(Dataset):
 class TrainDataset(StorageDataset):
     def get_sample(self, group, offset):
         X = group['examples'][offset]
+        p = np.random.permutation(np.arange(200))
+        X = X[p]
+
         Y = group['labels'][offset]
 
         return X, Y

@@ -158,6 +158,7 @@ def get_pos_and_labels(align: TargetAlign, ref, region):
 
     all_pos = []
     all_labels = []
+    H = []
 
     pairs = get_pairs(align.align, ref)
     cur_pos, ins_count = None, 0
@@ -165,6 +166,7 @@ def get_pos_and_labels(align: TargetAlign, ref, region):
     def p(e):
         return e.rpos is None or (e.rpos < start)
 
+    last_label = -1
     for pair in itertools.dropwhile(p, pairs):
         if (pair.rpos == align.align.reference_end or
                 (pair.rpos is not None and pair.rpos >= end)):
@@ -185,5 +187,7 @@ def get_pos_and_labels(align: TargetAlign, ref, region):
             label = encoding[UNKNOWN]
 
         all_labels.append(label)
+        H.append(1 if last_label != label else 0)
+        last_label = label
 
-    return all_pos, all_labels
+    return all_pos, all_labels, H

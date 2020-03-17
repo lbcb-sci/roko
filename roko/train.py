@@ -12,7 +12,7 @@ from rnn_model import *
 BATCH_SIZE = 128
 EPOCHS = 100
 LR = 1e-4
-PATIENCE = 7
+PATIENCE = 70
 
 
 def train(train_path, out, val_path=None, mem=False, workers=0, batch_size=128):
@@ -27,26 +27,29 @@ def train(train_path, out, val_path=None, mem=False, workers=0, batch_size=128):
     if val_path:
         val_ds = data_class(val_path, transform=TrainToTensor())
 
-    train_dl = DataLoader(train_ds, batch_size, True, num_workers=workers)
+    train_dl = DataLoader(train_ds, batch_size, True, num_workers=workers, pin_memory=True)
     if val_path:
-        val_dl = DataLoader(val_ds, batch_size, num_workers=workers)
+        val_dl = DataLoader(val_ds, batch_size, num_workers=workers, pin_memory=True)
 
     use_cuda = torch.cuda.is_available()
     device = torch.device('cuda:0' if use_cuda else 'cpu')
     print(f'Device: {device}')
 
-    model = RNN(IN_SIZE, HIDDEN_SIZE, NUM_LAYERS).to(device)
+    model = RNN(IN_SIZE, HIDDEN_SIZE, NUM_LAYERS)
+    if torch.cuda.device_count() > 1:
+        model = nn.DataParallel(model)
+    model = model.to(device)
     optim = torch.optim.Adam(model.parameters(), lr=LR)
 
     def step(engine, batch):
         x, y = batch
-        x, y = x.type(torch.cuda.LongTensor if device.type == 'cuda' else torch.LongTensor), y.to(device)
-
+        x, y = x.to(device, torch.long, non_blocking=True), y.to(device, non_blocking=True)
 
         model.train()
         model.zero_grad()
 
-        output = model(x).transpose(1, 2)
+        output = model(x)
+
         loss = F.cross_entropy(output, y)
 
         loss.backward()
@@ -60,7 +63,7 @@ def train(train_path, out, val_path=None, mem=False, workers=0, batch_size=128):
             x, y = batch
             x, y = x.type(torch.cuda.LongTensor if device.type == 'cuda' else torch.LongTensor), y.to(device)
 
-            out = model(x).transpose(1, 2)
+            out = model(x)
             return out, y
 
     trainer = Engine(step)

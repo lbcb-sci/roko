@@ -10,14 +10,15 @@ class Storage:
 
         if not infer:
             self.Y = []
+            self.H = []
 
         self.infer = infer
 
-    def extend(self, pos, X, Y):
+    def extend(self, pos, X, Y, H):
         if self.infer:
             assert len(pos) == len(X)
         else:
-            assert len(pos) == len(X) == len(Y)
+            assert len(pos) == len(X) == len(Y) == len(H)
 
         for i, p in enumerate(pos):
             self.pos.append(p)
@@ -25,6 +26,7 @@ class Storage:
 
             if not self.infer:
                 self.Y.append(Y[i])
+                self.H.append(H[i])
 
     def write(self, f):
         if not self.pos:
@@ -33,7 +35,7 @@ class Storage:
         if self.infer:
             assert len(self.pos) == len(self.X)
         else:
-            assert len(self.pos) == len(self.X) == len(self.Y)
+            assert len(self.pos) == len(self.X) == len(self.Y) == len(self.H)
 
         start, end = self.pos[0][0][0], self.pos[-1][-1][0]
 
@@ -41,6 +43,7 @@ class Storage:
         group['positions'] = self.pos
         if not self.infer:
             group['labels'] = self.Y
+            group['H'] = self.H
         group.attrs['contig'] = self.name
         group.attrs['size'] = len(self.pos)
 
@@ -53,6 +56,7 @@ class Storage:
 
         if not self.infer:
             del self.Y[:]
+            del self.H[:]
 
 class DataWriter:
     def __init__(self, filename, infer):
@@ -68,13 +72,13 @@ class DataWriter:
     def __exit__(self, type, value, traceback):
         self.fd.close()
 
-    def store(self, contig, positions, examples, labels):
+    def store(self, contig, positions, examples, labels, hp):
         try:
             storage = self.storages[contig]
         except KeyError:
             storage = self.storages[contig] = Storage(contig, self.infer)
 
-        storage.extend(positions, examples, labels)
+        storage.extend(positions, examples, labels, hp)
 
     def write(self):
         for storage in self.storages.values():

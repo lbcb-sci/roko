@@ -46,18 +46,20 @@ def generate_train(args):
         print('No alignments.')
         return None
 
-    positions, examples, labels = [], [], []
+    positions, examples, labels, HP = [], [], [], []
 
     for a in filtered:
         pos_labels = dict()
+        pos_hp = dict()
         n_pos = set()
 
-        t_pos, t_labels = get_pos_and_labels(a, ref, region)
-        for p, l in zip(t_pos, t_labels):
+        t_pos, t_labels, H = get_pos_and_labels(a, ref, region)
+        for p, l, h in zip(t_pos, t_labels, H):
             if l == ENCODED_UNKNOWN:
                 n_pos.add(p)
             else:
                 pos_labels[p] = l
+                pos_hp[p] = h
 
         pos_sorted = sorted(list(pos_labels.keys()))
         region_string = f'{region.name}:{pos_sorted[0][0]+1}-{pos_sorted[-1][0]}'
@@ -66,8 +68,10 @@ def generate_train(args):
 
         for P, X in zip(*result):
             Y = []
+            H = []
             to_yield = True
 
+            ins = False
             for p in P:
                 assert is_in_region(p[0], filtered)
 
@@ -77,21 +81,27 @@ def generate_train(args):
 
                 try:
                     y_label = pos_labels[p]
+                    h_label = 1 if ins else pos_hp[p]
+                    ins = False
                 except KeyError:
                     if p[1] != 0:
                         y_label = encoding[GAP]
+                        h_label = 1 if p[1] == 1 else 0
+                        ins = True
                     else:
                         raise KeyError(f'No label mapping for position {p}.')
 
                 Y.append(y_label)
+                H.append(h_label)
 
             if to_yield:
                 positions.append(P)
                 examples.append(X)
                 labels.append(Y)
+                HP.append(H)
 
     print(f'Finished generating examples for {region.name}:{region.start}-{region.end}.')
-    return region.name, positions, examples, labels
+    return region.name, positions, examples, labels, HP
 
 
 def generate_infer(args):
@@ -107,7 +117,7 @@ def generate_infer(args):
         examples.append(X)
 
     print(f'Finished generating examples for {region.name}:{region.start}-{region.end}.')
-    return region.name, positions, examples, None
+    return region.name, positions, examples, None, None
 
 
 def main():
@@ -143,8 +153,8 @@ def main():
             for result in pool.imap(func, arguments):
                 if not result:
                     continue
-                c, p, x, y = result
-                data.store(c, p, x, y)
+                c, p, x, y, h = result
+                data.store(c, p, x, y, h)
                 finished += 1
 
                 if finished % 10 == 0:
