@@ -54,6 +54,8 @@ class RNN(nn.Module):
         x = self.do2(x)
 
         x = x.reshape(-1, 90, IN_SIZE)
+
+        self.gru.flatten_parameters()
         x, _ = self.gru(x)
 
         return self.fc4(x)

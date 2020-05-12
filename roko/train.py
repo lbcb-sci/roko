@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 from datasets import TrainDataset, InMemoryTrainDataset, TrainToTensor
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose
@@ -8,6 +9,7 @@ from ignite.metrics import RunningAverage, Accuracy, Loss
 from ignite.handlers import EarlyStopping, ModelCheckpoint
 from tqdm import tqdm
 from rnn_model import *
+from utils import LabelSmoothing
 
 BATCH_SIZE = 128
 EPOCHS = 100
@@ -36,7 +38,11 @@ def train(train_path, out, val_path=None, mem=False, workers=0, batch_size=128):
     print(f'Device: {device}')
 
     model = RNN(IN_SIZE, HIDDEN_SIZE, NUM_LAYERS).to(device)
+    if torch.cuda.device_count() > 1:
+        model = nn.DataParallel(model)
     optim = torch.optim.Adam(model.parameters(), lr=LR)
+
+    criterion = LabelSmoothing(0.1)
 
     def step(engine, batch):
         x, y = batch
@@ -47,7 +53,8 @@ def train(train_path, out, val_path=None, mem=False, workers=0, batch_size=128):
         model.zero_grad()
 
         output = model(x).transpose(1, 2)
-        loss = F.cross_entropy(output, y)
+        #loss = F.cross_entropy(output, y)
+        loss = criterion(output, y)
 
         loss.backward()
         optim.step()
@@ -68,7 +75,8 @@ def train(train_path, out, val_path=None, mem=False, workers=0, batch_size=128):
 
     RunningAverage(output_transform=lambda x: x).attach(trainer, 'train_loss')
     Accuracy().attach(evaluator, 'val_acc')
-    Loss(F.cross_entropy).attach(evaluator, 'val_loss')
+    #Loss(F.cross_entropy).attach(evaluator, 'val_loss')
+    Loss(criterion).attach(evaluator, 'val_loss')
 
     if val_path:
         # EarlyStopping
