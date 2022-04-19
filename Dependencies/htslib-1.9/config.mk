@@ -43,7 +43,7 @@ RANLIB = ranlib
 CPPFLAGS = 
 CFLAGS   =  -Wall -fpic
 LDFLAGS  = 
-LIBS     = -llzma -lbz2 -lz -lm 
+LIBS     = -lz -lm 
 
 PLATFORM   = default
 PLUGIN_EXT = .so

@@ -7,21 +7,23 @@ class Storage:
         self.name = name
         self.pos = []
         self.X = []
+        self.X2 = []
 
         if not infer:
             self.Y = []
 
         self.infer = infer
 
-    def extend(self, pos, X, Y):
+    def extend(self, pos, X, Y, X2):
         if self.infer:
-            assert len(pos) == len(X)
+            assert len(pos) == len(X) == len(X2)
         else:
-            assert len(pos) == len(X) == len(Y)
+            assert len(pos) == len(X) == len(Y) == len(X2)
 
         for i, p in enumerate(pos):
             self.pos.append(p)
             self.X.append(X[i])
+            self.X2.append(X2[i])
 
             if not self.infer:
                 self.Y.append(Y[i])
@@ -31,9 +33,9 @@ class Storage:
             return
 
         if self.infer:
-            assert len(self.pos) == len(self.X)
+            assert len(self.pos) == len(self.X) == len(self.X2)
         else:
-            assert len(self.pos) == len(self.X) == len(self.Y)
+            assert len(self.pos) == len(self.X) == len(self.Y) == len(self.X2)
 
         start, end = self.pos[0][0][0], self.pos[-1][-1][0]
 
@@ -45,11 +47,13 @@ class Storage:
         group.attrs['size'] = len(self.pos)
 
         print(f'Writing to {group.name}')
-        group.create_dataset('examples', data=self.X, chunks=(1, 200, 90))
+        group.create_dataset('examples', data=self.X, chunks=(1, 30, 90))
+        group.create_dataset('stats', data=self.X2, chunks=(1, 5, 90))
 
     def clear(self):
         del self.pos[:]
         del self.X[:]
+        del self.X2[:]
 
         if not self.infer:
             del self.Y[:]
@@ -68,13 +72,13 @@ class DataWriter:
     def __exit__(self, type, value, traceback):
         self.fd.close()
 
-    def store(self, contig, positions, examples, labels):
+    def store(self, contig, positions, examples, labels, pos_stats):
         try:
             storage = self.storages[contig]
         except KeyError:
             storage = self.storages[contig] = Storage(contig, self.infer)
 
-        storage.extend(positions, examples, labels)
+        storage.extend(positions, examples, labels, pos_stats)
 
     def write(self):
         for storage in self.storages.values():

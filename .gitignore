@@ -2,6 +2,11 @@
 # Created by https://www.gitignore.io/api/c,c++,linux,python,pycharm+all,visualstudiocode
 # Edit at https://www.gitignore.io/?templates=c,c++,linux,python,pycharm+all,visualstudiocode
 
+Dependencies/
+yhes/
+wandb/
+*.log
+
 ### C ###
 # Prerequisites
 *.d
