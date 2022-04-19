@@ -6,8 +6,10 @@ from collections import defaultdict, Counter
 import argparse
 from torch.utils.data import Dataset, DataLoader
 import itertools
-from rnn_model import *
 import numpy as np
+from v6v7v8_polisher import Polisher
+#from GPUtil import showUtilization as gpu_usage
+#from numba import cuda
 
 GPU_NUM = 1
 
@@ -19,9 +21,9 @@ decoding = {v: k for k, v in encoding.items()}
 
 class ToTensor:
     def __call__(self, sample):
-        contig, position, x = sample
+        contig, position, x, x2 = sample
 
-        return contig, position, torch.from_numpy(x)
+        return contig, position, torch.from_numpy(x), torch.from_numpy(x2)
 
 
 class InferenceDataset(Dataset):
@@ -71,9 +73,10 @@ class InferenceDataset(Dataset):
 
         contig = group.attrs['contig']
         X = group['examples'][p]
+        X2 = group['stats'][p]
         position = group['positions'][p]
 
-        sample = (contig, position, X)
+        sample = (contig, position, X, np.nan_to_num(X2/np.sum(X2,axis=0)))
         if self.transform:
             sample = self.transform(sample)
 
@@ -87,12 +90,17 @@ class InferenceDataset(Dataset):
             self.fd.close()
 
 
-def infer(data, model_path, out, workers=0, batch_size=128):
+def infer(data, model_path, out, workers=0, batch_size=128, gpu='6'):
     use_cuda = torch.cuda.is_available()
-    device = torch.device('cuda:0' if use_cuda else 'cpu')
+    device = torch.device('cuda:'+gpu if use_cuda else 'cpu')
+    print(device)
 
-    model = RNN(IN_SIZE, HIDDEN_SIZE, NUM_LAYERS).to(device)
-    model.load_state_dict(torch.load(model_path))
+    
+    model = Polisher.load_from_checkpoint(checkpoint_path=model_path).to(device)
+    model.freeze()
+    #model = RNN(IN_SIZE, HIDDEN_SIZE, NUM_LAYERS).to(device)
+    #model.load_state_dict(torch.load(model_path))
+
     if device.type == 'cuda' and GPU_NUM > 1:
         model = nn.DataParallel(model, list(range(GPU_NUM)))
 
@@ -102,17 +110,24 @@ def infer(data, model_path, out, workers=0, batch_size=128):
     records = []
 
     dataset = InferenceDataset(data, transform=ToTensor())
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=workers)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=workers, prefetch_factor = 1)
 
     info = []
 
     print('Inference started')
     with torch.no_grad():
         for i, batch in enumerate(dataloader):
-            c, pos, x = batch
-            x = x.type(torch.cuda.LongTensor if device.type == 'cuda' else torch.LongTensor)
+            c, pos, x, x2 = batch
+            #print("device used:", device)
+            #print(x.shape,x2.shape)
+            #torch.cuda.memory_summary(device = 6) # why doesnt this print out anything??
+            #print("Initial GPU Usage")
+            #gpu_usage()
+            # x, x2 = x.type(torch.cuda.LongTensor if device.type == 'cuda' else torch.LongTensor), x2.type(torch.cuda.FloatTensor if device.type == 'cuda' else torch.FloatTensor)
+            x = x.to(device).long()
+            x2 = x2.to(device).float()
 
-            logits = model(x)
+            logits = model(x,x2.transpose(1,2))
             Y = torch.argmax(logits, dim=2).long()
             Y = Y.cpu().numpy()
 
@@ -127,28 +142,34 @@ def infer(data, model_path, out, workers=0, batch_size=128):
                 print(f'{i + 1} batches processed')
 
     contigs = dataset.contigs
-    for contig in result:
-        values = result[contig]
+    with open(str.split(out,'.fasta')[0]+"_aux_file.txt", "w") as aux_file:
+        for contig in result:
+            values = result[contig]
 
-        pos_sorted = sorted(values)
-        pos_sorted = list(itertools.dropwhile(lambda x: x[1] != 0, pos_sorted))
+            pos_sorted = sorted(values)
+            pos_sorted = list(itertools.dropwhile(lambda x: x[1] != 0, pos_sorted))
 
-        first = pos_sorted[0][0]
-        contig_data = contigs[contig]
-        seq = contig_data[0][:first]
+            first = pos_sorted[0][0]
+            contig_data = contigs[contig]
+            seq = contig_data[0][:first]
 
-        for i, p in enumerate(pos_sorted):
-            base, _ = values[p].most_common(1)[0]
-            if base == GAP:
-                continue
-            seq += base
+            aux_file.write(f'{contig}\n')
 
-        last_pos = pos_sorted[-1][0]
-        seq += contig_data[0][last_pos+1:]
+            for i, p in enumerate(pos_sorted):
+                base, _ = values[p].most_common(1)[0]
+                # save the position and base to a file: 
+                aux_file.write(f'{p}\t{base}\t{values[p]}\n')
 
-        seq = Seq(seq)
-        record = SeqRecord.SeqRecord(seq, id=contig)
-        records.append(record)
+                if base == GAP:
+                    continue
+                seq += base
+
+            last_pos = pos_sorted[-1][0]
+            seq += contig_data[0][last_pos+1:]
+
+            seq = Seq(seq)
+            record = SeqRecord.SeqRecord(seq, id=contig)
+            records.append(record)
 
     with open(out, 'w') as f:
         SeqIO.write(records, f, 'fasta')
@@ -160,10 +181,12 @@ def main():
     parser.add_argument('model', type=str)
     parser.add_argument('out', type=str)
     parser.add_argument('--t', type=int, default=0)
-    parser.add_argument('--b', type=int, default=128)
+    parser.add_argument('--b', type=int, default=32)
+    parser.add_argument('--gpu', type=str, default='6')
     args = parser.parse_args()
 
-    infer(args.data, args.model, args.out, args.t, args.b)
+    infer(args.data, args.model, args.out, args.t, args.b, args.gpu)
+    print("done")
 
 
 if __name__ == '__main__':

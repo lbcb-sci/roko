@@ -1,0 +1,23 @@
+trainer:
+  gpus: [0,1,2,3]
+  precision: 16
+  gradient_clip_val: 1.0
+  max_epochs: 100
+  weights_save_path: /raid/scratch/wuws/docker/featuresizereduction/model
+model:
+  gru_input_dim: 128
+  gru_hidden_dim: 128
+  gru_n_layers: 1
+  gru_dropout: 0.0
+  attn_embed_dim: 128
+  attn_n_heads: 8
+  attn_n_blocks: 8
+  attn_depth_prob: 1.0
+  attn_pos_dropout: 0.1
+  lr: 3e-4
+data:
+  data_dir: /raid/scratch/wuws/docker/featuresizereduction/feature_30_90/v8_smaller_feature/train
+  val_path: /raid/scratch/wuws/docker/featuresizereduction/feature_30_90/v8_smaller_feature/val
+  batch_size: 32
+  mem: False
+  workers: 4
