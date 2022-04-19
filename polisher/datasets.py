@@ -12,7 +12,8 @@ def get_filenames(path):
         for f in os.listdir(path):
             if f.endswith('.hdf5'):
                 filenames.append(os.path.join(path, f))
-
+        for name in filenames:
+            print(name)
         return filenames
 
     return [path]
@@ -63,10 +64,17 @@ class StorageDataset(Dataset):
         group = f[g]
 
         sample = self.get_sample(group, p)
-        if self.transform:
-            sample = self.transform(sample)
 
-        return sample
+        # permutate the order of the reads
+        perm = np.random.permutation(sample[0].shape[0])
+        perm = np.delete(perm, np.where(perm == 0))
+        perm = np.insert(perm, 0, 0)
+        tup = (sample[0][perm], sample[1], sample[2])
+
+        if self.transform:
+            tup = self.transform(tup)
+
+        return tup
 
     def __len__(self):
         return self.size
@@ -78,8 +86,14 @@ class TrainDataset(StorageDataset):
         X = X[p]
 
         Y = group['labels'][offset]
+        X2 = group['stats'][offset] # 5 90
+        
+        # del the print statements later: check if before and after are the same data types
+        print("before",type(X2[0][0]))
+        X2 = X2.astype(np.int16)
+        print("after",type(X2[0][0]))
 
-        return X, Y
+        return X, Y, np.nan_to_num(X2/np.sum(X2,axis=0))
 
 
 class InMemoryTrainDataset(Dataset):
@@ -88,6 +102,7 @@ class InMemoryTrainDataset(Dataset):
 
         self.X = []
         self.Y = []
+        self.X2 = []
 
         for filename in self.filenames:
             with h5py.File(filename, 'r') as f:
@@ -100,19 +115,21 @@ class InMemoryTrainDataset(Dataset):
                 for g in groups:
                     X = f[g]['examples'][()]
                     Y = f[g]['labels'][()]
+                    X2 = f[g]['stats'][()]
 
                     self.X.extend(list(X))
                     self.Y.extend(list(Y))
+                    self.X2.extend(list(X2))
 
             print(f'Processed: {filename}')
 
-        assert len(self.X) == len(self.Y)
+        assert len(self.X) == len(self.Y) == len(self.X2)
         self.size = len(self.X)
 
         self.transform = transform
 
     def __getitem__(self, idx):
-        sample = (self.X[idx], self.Y[idx])
+        sample = (self.X[idx], self.Y[idx], self.X2[idx])
         if self.transform:
             sample = self.transform(sample)
 
@@ -124,5 +141,5 @@ class InMemoryTrainDataset(Dataset):
 
 class TrainToTensor:
     def __call__(self, sample):
-        X, Y = sample
-        return torch.from_numpy(X), torch.from_numpy(Y)
+        X, Y, X2 = sample
+        return torch.from_numpy(X), torch.from_numpy(Y), torch.from_numpy(X2)

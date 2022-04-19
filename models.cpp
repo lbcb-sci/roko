@@ -14,6 +14,8 @@ extern "C" {
         int status;
         PileupData* plp_data = (PileupData*) data;
 
+        //std::cout << "min_mapping_quality: (should be 1 now) " << int(min_mapping_quality) << "\n";
+
         while (1) {
             if (plp_data->iter) {
                 status = sam_itr_next(plp_data->file, plp_data->iter, b);
